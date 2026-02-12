@@ -1,0 +1,21 @@
+# 忽略 ESP-IDF 編譯產生的資料夾
+build/
+managed_components/
+dependencies.lock
+
+# 忽略 VS Code 個人設定 (可選，建議忽略)
+.vscode/
+*.code-workspace
+
+# 忽略 Python 快取
+__pycache__/
+*.pyc
+
+# 忽略系統縮圖
+.DS_Store
+Thumbs.db
+
+# 關於 sdkconfig
+# 為了論文紀錄，建議保留 sdkconfig，這樣別人才能知道您的 menuconfig 設定
+# 但如果您希望保持最乾淨，可以取消下面這一行的註解
+# sdkconfig
