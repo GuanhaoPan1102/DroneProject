@@ -10,6 +10,9 @@
 #include "drv_sd_card.h"
 #include "sys_defs.h"
 
+#include <time.h>
+#include <sys/time.h>
+
 static const char *TAG = "SD_CARD";
 #define MOUNT_POINT "/sdcard"
 
@@ -73,7 +76,7 @@ static void sd_card_write_task(void *pvParameters)
                 }
 
                 // 3. 寫入 CSV 表頭
-                fprintf(f, "timestamp_ms,rssi,seq_num,lat,lon,alt_m,spd_kmh\n");
+                fprintf(f, "unix_time_ms,rssi,seq_num,lat,lon,alt_m,spd_kmh\n");
                 
                 // 4. 印出檔名與開始訊息
                 ESP_LOGI(TAG, ">>> Start New Recording: %s", current_filename);
@@ -85,19 +88,21 @@ static void sd_card_write_task(void *pvParameters)
 
             // --- 狀態 2: 處理資料寫入 ---
             
-            // 取得時間戳
-            int64_t timestamp = esp_timer_get_time() / 1000;
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            int64_t timestamp = ((int64_t)tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+            timestamp -= 57600000;
 
-            // 格式化資料
+            // 格式化資料 (這段完全不用動，因為 timestamp 還是 int64_t)
             int len = snprintf(line_buffer, sizeof(line_buffer), 
-                     "%lld,%d,%d,%.7f,%.7f,%d,%.2f\n",
-                     timestamp,
-                     item.rssi,
-                     item.payload.seq_num,
-                     (double)item.payload.lat / 10000000.0,
-                     (double)item.payload.lon / 10000000.0,
-                     item.payload.alt,
-                     (double)item.payload.spd / 100.0
+                    "%lld,%d,%d,%.7f,%.7f,%d,%.2f\n",
+                    timestamp,
+                    item.rssi,
+                    item.payload.seq_num,
+                    (double)item.payload.lat / 10000000.0,
+                    (double)item.payload.lon / 10000000.0,
+                    item.payload.alt,
+                    (double)item.payload.spd / 100.0
             );
 
             fwrite(line_buffer, 1, len, f);

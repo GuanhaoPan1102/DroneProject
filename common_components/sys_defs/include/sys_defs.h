@@ -21,7 +21,7 @@ extern "C" {
 #define UART_HEADER_0  0xEB
 #define UART_HEADER_1  0x90
 
-// GPS 資料結構
+// UAV GPS 資料結構
 typedef struct {
     // 經緯度：單位為 度 * 10^7
     // 例如：25.0339640 度 -> 儲存為 250339640
@@ -60,7 +60,14 @@ typedef struct {
     int rssi;                  // 訊號強度
 } ble_packet_queue_item_t;
 
-
+// 地面站GPS 資料結構
+typedef struct {
+    int32_t latitude;   // 緯度 (例如 221234567 代表 22.1234567 度)
+    int32_t longitude;  // 經度
+    float altitude;     // 高度 (單位: 公尺)
+    bool is_fixed;      // 是否已經完成 60 次平均並鎖定
+    bool is_time_synced;// 是否已經完成時間同步
+} gps_fix_t;
 
 
 #ifdef __cplusplus
