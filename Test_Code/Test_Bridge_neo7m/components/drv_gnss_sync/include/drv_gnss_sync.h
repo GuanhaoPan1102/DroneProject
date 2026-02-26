@@ -15,4 +15,8 @@ void gnss_reset_fix(void);
 
 void configure_neo7m(int uart_num);
 
+void configure_atgm336h(int uart_num);
+
+void send_cmd(int uart_num, const char* cmd);
+
 #endif // COMMON_DRV_GNSS_H

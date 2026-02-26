@@ -423,3 +423,37 @@ void configure_neo7m(int uart_num)
     uart_write_bytes(uart_num, (const char*)ubx_cfg_save, sizeof(ubx_cfg_save));
     ESP_LOGI(TAG, "Configuration Saved to NEO-7M Flash/BBR");
 }
+
+// 用來發送指令的輔助函式
+void send_cmd(int uart_num, const char* cmd) {
+    uart_write_bytes(uart_num, cmd, strlen(cmd));
+    // 等待一點時間讓模組處理
+    vTaskDelay(pdMS_TO_TICKS(100)); 
+}
+
+void configure_atgm336h(int uart_num)
+{
+    ESP_LOGI(TAG, "Configuring ATGM336H GPS...");
+
+    // 1. 先設定 Update Rate 為 10Hz (此時還是 9600 baud)
+    //    注意：如果您不需要這麼快，可以改用 5Hz ($PCAS02,200*1D)
+    send_cmd(uart_num, "$PCAS02,100*1E\r\n");
+    ESP_LOGI(TAG, "Update Rate set to 10Hz");
+
+    // 2. 設定 Baud Rate 為 115200
+    //    警告：送出這行後，模組會立刻變心，我們只有幾毫秒的時間可以切換
+    send_cmd(uart_num, "$PCAS01,5*19\r\n");
+    ESP_LOGI(TAG, "Baud Rate set command sent. Switching ESP32 UART...");
+
+    // 3. 立刻切換 ESP32 的 UART 速度來追上它
+    //    等待 200ms 確保模組已經切換完畢
+    vTaskDelay(pdMS_TO_TICKS(200)); 
+    uart_set_baudrate(uart_num, 115200);
+    ESP_LOGI(TAG, "ESP32 UART switched to 115200");
+
+    // 4. 儲存設定 (Save to Flash)
+    //    這時候我們已經是用 115200 在溝通了
+    //    如果這行成功，代表通訊握手成功
+    send_cmd(uart_num, "$PCAS00*01\r\n");
+    ESP_LOGI(TAG, "Configuration Saved to Flash");
+}

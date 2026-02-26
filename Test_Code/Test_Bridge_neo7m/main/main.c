@@ -24,6 +24,8 @@ void app_main(void)
     gnss_sync_init(UART_NUM_2, 23, 18, 19, 9600);
 
     configure_neo7m(UART_NUM_2);
+    //configure_atgm336h(UART_NUM_2);
+
 
     ESP_LOGI(TAG, "Waiting for System Ready (Position Fix & Time Sync)...");
 
