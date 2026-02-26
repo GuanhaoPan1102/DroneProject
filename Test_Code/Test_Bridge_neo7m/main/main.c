@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "driver/uart.h"
 #include "sys_defs.h"
 
@@ -17,6 +18,11 @@ static const char *TAG = "MAIN";
 
 void app_main(void)
 {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    ESP_LOGI(TAG, "MAC Address {0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X}", 
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    
 	// 建立 Queue
     QueueHandle_t recv_queue = xQueueCreate(50, sizeof(ble_packet_queue_item_t));
 
