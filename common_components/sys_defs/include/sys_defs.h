@@ -69,6 +69,41 @@ typedef struct {
     bool is_time_synced;// 是否已經完成時間同步
 } gps_fix_t;
 
+// ESP-NOW 訊息類型
+typedef enum {
+    MSG_TYPE_REGISTER = 0,    // 節點註冊 (傳送地面站 GPS 位置)
+    MSG_TYPE_FILE_SAVED = 1,  // 檔案儲存完畢通知
+    MSG_TYPE_BLE_DATA = 2     // 預留給未來即時傳輸 BLE RSSI 用
+} espnow_msg_type_t;
+
+// ESP-NOW 傳輸 Payload (使用 packed 避免記憶體對齊造成的長度誤差)
+typedef struct __attribute__((packed)) {
+    uint8_t  msg_type;   // 對應 espnow_msg_type_t
+    uint8_t  node_id;    // 節點編號 (例如 Slave 1, 2, 3)
+    
+    // 使用 union 讓不同種類的訊息共用這塊記憶體空間，節省傳輸頻寬
+    union {
+        // [MSG_TYPE_REGISTER] 註冊用的資料
+        struct {
+            int32_t lat;
+            int32_t lon;
+            float   alt;
+        } reg;
+
+        // [MSG_TYPE_FILE_SAVED] 檔案儲存回報用的資料
+        struct {
+            int64_t timestamp;     // 儲存當下的時間戳 (已校正為純 UTC)
+            char    filename[16];  // 檔名，例如 "DATA1.csv"
+        } file;
+        
+        // [MSG_TYPE_BLE_DATA] 即時 BLE 資料 (未來可直接把你的 Queue Item 傳過來)
+        struct {
+            int64_t timestamp;
+            ble_packet_queue_item_t ble_data; 
+        } live_data;
+
+    } data;
+} espnow_payload_t;
 
 #ifdef __cplusplus
 }
