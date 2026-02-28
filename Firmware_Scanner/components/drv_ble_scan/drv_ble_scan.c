@@ -84,10 +84,9 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                         // 1. 複製資料 (Memcpy)
                         memcpy(&item.payload, uav_packet, sizeof(uav_ble_payload_t));
                         item.rssi = scan_result->scan_rst.rssi;
-
                         // 2. 丟進 Queue (因為在 Callback 中，必須用 FromISR)
                         if (g_ble_data_queue != NULL) {
-                            xQueueSendFromISR(g_ble_data_queue, &item, NULL);
+                            xQueueSend(g_ble_data_queue, &item, 0);
                         }
 
                     } else {

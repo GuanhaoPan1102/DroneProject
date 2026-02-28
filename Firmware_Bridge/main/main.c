@@ -28,6 +28,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Waiting for System Ready (Position Fix & Time Sync)...");
 
     while (1) {
+        break; // For Test
         gps_fix_t status = gnss_get_fix();
 
         // 條件：位置鎖定 (is_fixed) 且 時間同步 (is_time_synced)

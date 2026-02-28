@@ -42,10 +42,10 @@ static void uart_send_task(void *pvParameters) {
                 ESP_LOGE(TAG, "UART write failed");
             } 
             // 測試初期可以開這行 Log 確認有在送，穩定後請註解掉以免拖慢速度
-            else {
-                count++;
-                ESP_LOGI(TAG, "Sent packet, RSSI: %d, num: %d", item.rssi, count);
-            }
+            //else {
+            //    count++;
+            //    ESP_LOGI(TAG, "Sent packet, RSSI: %d, num: %d", item.rssi, count);
+            //}
         }
     }
 }
