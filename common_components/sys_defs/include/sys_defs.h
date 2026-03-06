@@ -88,6 +88,7 @@ typedef struct __attribute__((packed)) {
             int32_t lat;
             int32_t lon;
             float   alt;
+            int64_t timestamp;
         } reg;
 
         // [MSG_TYPE_FILE_SAVED] 檔案儲存回報用的資料

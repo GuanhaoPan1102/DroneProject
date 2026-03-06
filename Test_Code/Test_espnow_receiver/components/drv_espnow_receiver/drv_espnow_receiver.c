@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include <string.h>
+#include <time.h>
 
 static const char *TAG = "ESPNOW_RX";
 
@@ -35,6 +36,15 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
                      payload->data.reg.lat / 10000000.0, 
                      payload->data.reg.lon / 10000000.0);
             ESP_LOGI(TAG, " -> 海拔高度: %.2f m", payload->data.reg.alt);
+
+            time_t slave_sec = payload->data.reg.timestamp / 1000;
+            time_t slave_tw_sec = slave_sec + (8 * 3600); // 加上台灣時區 (+8) 以方便閱讀
+            struct tm timeinfo;
+            gmtime_r(&slave_tw_sec, &timeinfo);
+            char time_str[64];
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
+            
+            ESP_LOGI(TAG, " -> 系統時間: %lld ms [%s]", payload->data.reg.timestamp, time_str);
             ESP_LOGI(TAG, "=========================================");
             break;
 
