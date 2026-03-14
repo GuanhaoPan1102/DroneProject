@@ -15,14 +15,20 @@
 #include "driver/sdmmc_host.h"
 #include "sdmmc_cmd.h"
 
-// 引入你的 GPS 同步驅動
-#include "drv_gnss_sync.h"
+// 【已移除 GPS 驅動標頭檔】
 
-static const char *TAG = "NODE_RX";
+static const char *TAG = "NODE_RX_NOGPS";
 #define MOUNT_POINT "/sdcard"
 #define LED_PIN 21
 
+// ==========================================
+// 🚀 燒錄前必改：設定這塊接收板的專屬名稱！
+// ==========================================
+#define MY_NODE_ID "S1"
+
+// 雙方必須完全一致的通訊結構體 (配合 Master 的 S0)
 typedef struct {
+    char     node_name[4]; 
     uint32_t seq_num;
 } __attribute__((packed)) sync_test_packet_t;
 
@@ -41,7 +47,7 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
 {
     if (len != sizeof(sync_test_packet_t)) return;
 
-    // 收到廣播瞬間，立刻抓時間！
+    // 抓取系統時間 (注意：因無 GPS，這只是 ESP32 開機後的相對時間)
     struct timeval tv;
     gettimeofday(&tv, NULL);
 
@@ -50,15 +56,15 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
     log_item_t item;
     item.seq_num = pkt->seq_num;
     
-    // 【新增】加上 8 小時 (28800 秒) 轉換為台灣時間 (+8 時區)
-    item.tv_sec  = (int64_t)tv.tv_sec + 28800; 
+    // 依然保留時間格式以相容 Python 腳本
+    item.tv_sec  = (int64_t)tv.tv_sec; 
     item.tv_usec = tv.tv_usec;
 
-    xQueueSendFromISR(s_log_queue, &item, NULL); // 使用 FromISR 確保中斷安全
+    xQueueSendFromISR(s_log_queue, &item, NULL); 
 }
 
 // ==========================================
-// SD 卡寫入任務 (支援 5 秒 Timeout 自動分檔與防覆蓋機制)
+// SD 卡寫入任務 (支援 5 秒 Timeout 自動分檔、防覆蓋與 LED 指示)
 // ==========================================
 static void sd_card_write_task(void *pvParameters)
 {
@@ -68,44 +74,46 @@ static void sd_card_write_task(void *pvParameters)
     bool is_recording = false;
     int count = 0;
 
-    // 1. 啟動時先掃描 SD 卡，找到下一個可用的檔案編號，避免覆蓋舊資料
+    // 1. 啟動時掃描 SD 卡，自動依據 MY_NODE_ID 尋找下一個可用的檔名
     while (1) {
         char check_name[64];
-        snprintf(check_name, sizeof(check_name), MOUNT_POINT "/S4_%03d.csv", file_index);
+        snprintf(check_name, sizeof(check_name), MOUNT_POINT "/%s_%03d.csv", MY_NODE_ID, file_index);
         FILE *temp = fopen(check_name, "r");
         if (temp != NULL) {
-            fclose(temp); // 檔案已存在，關閉它
-            file_index++; // 編號 +1 繼續尋找下一個
+            fclose(temp); 
+            file_index++; 
         } else {
-            break; // 找不到該檔案，代表這個編號是空的，可以使用！
+            break; 
         }
     }
     
     ESP_LOGI(TAG, "SD 卡準備就緒！");
-    ESP_LOGI(TAG, "等待 Master 廣播中，下一份實驗資料將存為: S4_%03d.csv", file_index);
+    ESP_LOGI(TAG, "等待 Master (S0) 廣播，下一份資料將存為: %s_%03d.csv", MY_NODE_ID, file_index);
 
     while (1) {
-        // 2. 等待 Queue，將無限期等待改為 Timeout 5000 毫秒 (5 秒)
+        // 2. 等待 Queue，Timeout 5000 毫秒 (5 秒)
         if (xQueueReceive(s_log_queue, &item, pdMS_TO_TICKS(5000)) == pdTRUE) {
             
             // 如果目前沒有在記錄中，代表這是「新的一輪實驗」的開始！
             if (!is_recording) {
                 char filename[64];
-                snprintf(filename, sizeof(filename), MOUNT_POINT "/S4_%03d.csv", file_index);
+                snprintf(filename, sizeof(filename), MOUNT_POINT "/%s_%03d.csv", MY_NODE_ID, file_index);
                 f = fopen(filename, "w");
                 
                 if (f == NULL) {
                     ESP_LOGE(TAG, "無法建立檔案: %s", filename);
-                    continue; // 建立失敗，略過這次寫入
+                    continue; 
                 }
                 
+                // 寫入 CSV 標頭
                 fprintf(f, "seq_num,tv_sec,tv_usec\n");
                 is_recording = true;
                 count = 0;
 
-                gpio_set_level(LED_PIN, 1);
+                // 【修正 LED 指示】回歸你的硬體邏輯：寫 1 點亮 LED！
+                gpio_set_level(LED_PIN, 1); 
 
-                ESP_LOGI(TAG, ">>> 收到廣播！開始新一輪實驗，正在記錄至: %s", filename);
+                ESP_LOGI(TAG, ">>> 收到 S0 廣播！開始新實驗，正在記錄至: %s", filename);
             }
 
             // 正常寫入資料
@@ -119,12 +127,12 @@ static void sd_card_write_task(void *pvParameters)
             }
 
         } else {
-            // 3. Timeout 觸發 (連續 5 秒都沒有收到 Queue 傳來的資料)
+            // 3. Timeout 觸發 (連續 5 秒都沒有收到資料，代表 Master 停止發送了)
             if (is_recording) {
-                ESP_LOGI(TAG, "--- 超過 5 秒未收到廣播，判斷本輪實驗結束 ---");
-                ESP_LOGI(TAG, "已安全封裝儲存: S4_%03d.csv", file_index);
+                ESP_LOGI(TAG, "--- 超過 5 秒未收到 S0 廣播，判斷本輪實驗結束 ---");
                 
-                gpio_set_level(LED_PIN, 0);
+                // 【修正 LED 指示】回歸你的硬體邏輯：寫 0 熄滅 LED！
+                gpio_set_level(LED_PIN, 0); 
 
                 // 將檔案緩衝區推入 SD 卡並關閉檔案
                 if (f != NULL) {
@@ -135,8 +143,8 @@ static void sd_card_write_task(void *pvParameters)
                 }
                 
                 is_recording = false;
-                file_index++; // 檔案編號 +1，準備迎接下一輪實驗
-                ESP_LOGI(TAG, "節點待命中，下一輪實驗將存為: SYNC_TEST_%03d.csv", file_index);
+                file_index++; 
+                ESP_LOGI(TAG, "節點待命中，下一輪實驗將存為: %s_%03d.csv", MY_NODE_ID, file_index);
             }
         }
     }
@@ -144,33 +152,19 @@ static void sd_card_write_task(void *pvParameters)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "初始化實驗 Receiver 節點...");
+    ESP_LOGI(TAG, "初始化實驗 Receiver 節點 (%s) [無 GPS 輕量模式]...", MY_NODE_ID);
 
+    // 【修正 LED 初始化】預設 0 = 接地 = 熄滅待命
     gpio_reset_pin(LED_PIN);
     gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_level(LED_PIN, 0); // 預設熄滅
+    gpio_set_level(LED_PIN, 0); 
 
     // 1. 初始化 NVS
     ESP_ERROR_CHECK(nvs_flash_init());
 
-    // 2. 初始化 GPS 與等待同步 (這是確保實驗有意義的關鍵！)
-    gnss_sync_init(UART_NUM_2, 23, 18, 19, 9600);
-    configure_neo7m(UART_NUM_2); 
+    // 【已移除】GPS 初始化與等待同步的區塊
 
-    ESP_LOGI(TAG, "等待 GPS 定位與 PPS 時間同步...");
-    while (1) {
-        gps_fix_t status = gnss_get_fix();
-        if (status.is_fixed && status.is_time_synced) {
-            ESP_LOGI(TAG, "====================================");
-            ESP_LOGI(TAG, " 系統時間已與 GNSS PPS 完美對齊！");
-            ESP_LOGI(TAG, " 準備啟動 ESP-NOW 測試模式...");
-            ESP_LOGI(TAG, "====================================");
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    // 3. 基礎網路與 Wi-Fi 初始化
+    // 2. 基礎網路與 Wi-Fi 初始化
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -181,7 +175,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE));
 
-    // 4. 初始化 SD 卡與 Queue
+    // 3. 初始化 SD 卡與 Queue
     s_log_queue = xQueueCreate(100, sizeof(log_item_t));
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
@@ -200,9 +194,9 @@ void app_main(void)
         ESP_LOGE(TAG, "SD 卡掛載失敗！請檢查硬體。");
     }
 
-    // 5. 初始化 ESP-NOW 並註冊 Callback
+    // 4. 初始化 ESP-NOW 並註冊 Callback
     ESP_ERROR_CHECK(esp_now_init());
     ESP_ERROR_CHECK(esp_now_register_recv_cb(espnow_recv_cb));
 
-    ESP_LOGI(TAG, "節點已進入監聽模式，等待 Master 廣播！");
+    ESP_LOGI(TAG, "Receiver 已進入監聽模式，等待 Master(S0) 廣播！");
 }
